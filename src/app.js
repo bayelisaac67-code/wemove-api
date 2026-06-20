@@ -18,6 +18,10 @@ const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 
+// Render (and most hosts) put the app behind a reverse proxy. Trust the first
+// proxy hop so express-rate-limit can read the real client IP from X-Forwarded-For.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
