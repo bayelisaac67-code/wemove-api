@@ -19,16 +19,21 @@ router.post(
     const expiresAt = new Date(Date.now() + parseInt(process.env.OTP_EXPIRY_SECONDS || 300) * 1000);
 
     await query(
-      `INSERT INTO otp_codes (id, phone, code, expires_at)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (phone) DO UPDATE SET code = $3, expires_at = $4, attempts = 0`,
-      [uuidv4(), phone, otp, expiresAt]
+      `INSERT INTO otp_codes (phone, code, expires_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (phone) DO UPDATE SET code = $2, expires_at = $3, attempts = 0`,
+      [phone, otp, expiresAt]
     );
 
     // TODO: send via Twilio in production
     console.log(`[OTP] ${phone}: ${otp}`);
 
-    res.json({ success: true, message: 'OTP sent' });
+    res.json({
+      success: true,
+      message: 'OTP sent',
+      // In development (no Twilio), return the code so it can be entered during testing.
+      ...(process.env.NODE_ENV !== 'production' && { devCode: otp }),
+    });
   })
 );
 

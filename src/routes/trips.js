@@ -6,6 +6,7 @@ const { authenticate, requireVerified } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 const matchingEngine = require('../../src/services/matchingEngine');
 const pricingEngine = require('../../src/services/pricingEngine');
+const { notify, notifyMany, TYPES } = require('../services/notifications');
 
 // GET /api/trips/search — passenger searches for trips
 router.get(
@@ -88,11 +89,19 @@ router.patch('/:id/complete', authenticate, requireVerified, asyncHandler(async 
   if (!trip) return res.status(404).json({ success: false, error: 'Trip not found' });
   if (trip.status !== 'IN_PROGRESS') return res.status(400).json({ success: false, error: 'Trip must be IN_PROGRESS' });
 
+  // Capture confirmed passengers before the status flips.
+  const passengers = (await query(
+    "SELECT passenger_id FROM bookings WHERE trip_id=$1 AND status='CONFIRMED'", [trip.id]
+  )).rows.map((r) => r.passenger_id);
+
   await query("UPDATE trips SET status='COMPLETED' WHERE id=$1", [trip.id]);
   // release payments for all confirmed bookings
   await query(`UPDATE payments SET status='RELEASED' WHERE booking_id IN
     (SELECT id FROM bookings WHERE trip_id=$1 AND status='CONFIRMED' AND payment_method != 'CASH')`, [trip.id]);
   await query("UPDATE bookings SET status='COMPLETED' WHERE trip_id=$1 AND status='CONFIRMED'", [trip.id]);
+
+  await notifyMany(passengers, TYPES.TRIP_COMPLETED, { title: 'Trip completed', message: 'Thanks for riding with WeMove', trip_id: trip.id }, 'PUSH');
+  await notifyMany(passengers, TYPES.RATE_TRIP, { title: 'Rate your trip', message: 'How was your ride? Tap to rate.', trip_id: trip.id }, 'PUSH');
 
   res.json({ success: true, message: 'Trip completed, payments released' });
 }));
@@ -105,12 +114,17 @@ router.delete('/:id', authenticate, requireVerified, asyncHandler(async (req, re
     return res.status(400).json({ success: false, error: 'Cannot cancel this trip' });
   }
 
+  // Capture affected passengers before the status flips.
+  const passengers = (await query(
+    "SELECT passenger_id FROM bookings WHERE trip_id=$1 AND status='CONFIRMED'", [trip.id]
+  )).rows.map((r) => r.passenger_id);
+
   await query("UPDATE trips SET status='CANCELLED' WHERE id=$1", [trip.id]);
   await query("UPDATE bookings SET status='CANCELLED_BY_DRIVER' WHERE trip_id=$1 AND status='CONFIRMED'", [trip.id]);
   await query(`UPDATE payments SET status='REFUNDED' WHERE booking_id IN
     (SELECT id FROM bookings WHERE trip_id=$1) AND status='HELD'`, [trip.id]);
 
-  // TODO: trigger reroute notifications
+  await notifyMany(passengers, TYPES.TRIP_CANCELLED, { title: 'Your ride was cancelled', message: 'The driver cancelled this trip — your payment is refunded.', trip_id: trip.id }, 'PUSH');
 
   res.json({ success: true, message: 'Trip cancelled, refunds initiated' });
 }));
