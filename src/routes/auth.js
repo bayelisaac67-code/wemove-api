@@ -9,7 +9,7 @@ const { asyncHandler } = require('../middleware/errorHandler');
 // POST /api/auth/send-otp
 router.post(
   '/send-otp',
-  [body('phone').matches(/^\+233[0-9]{9}$/).withMessage('Valid Ghana number required (+233XXXXXXXXX)')],
+  [body('phone').matches(/^\+[1-9]\d{7,14}$/).withMessage('Valid international number required (+<country code><number>)')],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
@@ -41,7 +41,7 @@ router.post(
 router.post(
   '/verify-otp',
   [
-    body('phone').matches(/^\+233[0-9]{9}$/),
+    body('phone').matches(/^\+[1-9]\d{7,14}$/),
     body('code').isLength({ min: 6, max: 6 }).isNumeric(),
   ],
   asyncHandler(async (req, res) => {
