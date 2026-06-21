@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { query } = require('../db');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { sendOtpSms } = require('../services/sms');
 
 // POST /api/auth/send-otp
 router.post(
@@ -25,8 +26,9 @@ router.post(
       [phone, otp, expiresAt]
     );
 
-    // TODO: send via Twilio in production
-    console.log(`[OTP] ${phone}: ${otp}`);
+    // Sends a real SMS when Twilio env vars are set; otherwise logs only.
+    // Failure-isolated inside the helper — never blocks the response.
+    await sendOtpSms(phone, otp);
 
     res.json({
       success: true,
