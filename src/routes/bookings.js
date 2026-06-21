@@ -67,6 +67,29 @@ router.post(
   })
 );
 
+// GET /api/bookings/:id — passenger views a booking (status + trip/driver detail)
+router.get('/:id', authenticate, asyncHandler(async (req, res) => {
+  const booking = (await query(
+    `SELECT b.id, b.status, b.seats, b.per_seat_price, b.total_price, b.payment_method,
+            b.pickup_point_id, b.dropoff_point_id,
+            t.departure_time, t.status AS trip_status,
+            COALESCE(u.preferred_name, u.full_name) AS driver_name, u.phone AS driver_phone,
+            v.make AS vehicle_make, v.model AS vehicle_model, v.colour AS vehicle_colour, v.plate_number,
+            pp1.name AS pickup_point_name, pp2.name AS dropoff_point_name
+     FROM bookings b
+     JOIN trips t ON b.trip_id = t.id
+     JOIN users u ON t.driver_id = u.id
+     JOIN vehicles v ON t.vehicle_id = v.id
+     JOIN pickup_points pp1 ON b.pickup_point_id = pp1.id
+     JOIN pickup_points pp2 ON b.dropoff_point_id = pp2.id
+     WHERE b.id = $1 AND b.passenger_id = $2`,
+    [req.params.id, req.user.id]
+  )).rows[0];
+
+  if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+  res.json({ success: true, booking });
+}));
+
 // PATCH /api/bookings/:id/accept — driver accepts
 router.patch('/:id/accept', authenticate, requireVerified, asyncHandler(async (req, res) => {
   const booking = (await query(

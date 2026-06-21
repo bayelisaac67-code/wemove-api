@@ -16,19 +16,77 @@ router.get(
   asyncHandler(async (req, res) => {
     const { corridor_id, direction, pickup_point_id, dropoff_point_id, desired_time, seats = 1 } = req.query;
 
-    const trips = await matchingEngine.findEligibleTrips({
+    const matched = await matchingEngine.findEligibleTrips({
       corridorId: corridor_id,
       direction,
       pickupPointId: pickup_point_id,
       dropoffPointId: dropoff_point_id,
-      desiredTime: desired_time,
+      desiredTime: desired_time || new Date().toISOString(),
       seats: parseInt(seats),
       passengerId: req.user.id,
     });
 
+    // Enrich each result with the per-seat price for THIS passenger's segment
+    // and reshape to exactly the fields the mobile trips-list renders.
+    const trips = await Promise.all(
+      matched.map(async (t) => ({
+        id: t.id,
+        departure_time: t.departure_time,
+        driver_name: t.driver_name,
+        driver_rating: Number(t.driver_rating),
+        driver_reliability: t.driver_reliability,
+        vehicle_make: t.vehicle_make,
+        vehicle_model: t.vehicle_model,
+        vehicle_colour: t.vehicle_colour,
+        plate_number: t.plate_number,
+        available_seats: t.available_seats,
+        pickup_point_name: t.pickup_point_name,
+        walk_minutes: 3,
+        per_seat_price: await pricingEngine.calculatePrice({
+          corridorId: t.corridor_id,
+          pickupPointId: pickup_point_id,
+          dropoffPointId: dropoff_point_id,
+          confirmedSeats: t.total_seats - t.available_seats,
+        }),
+      }))
+    );
+
     res.json({ success: true, trips });
   })
 );
+
+// GET /api/trips/:id — single trip detail (+ per-seat price for a segment)
+router.get('/:id', authenticate, asyncHandler(async (req, res) => {
+  const { pickup_point_id, dropoff_point_id } = req.query;
+
+  const trip = (await query(
+    `SELECT t.id, t.departure_time, t.available_seats, t.total_seats, t.status,
+            t.direction, t.corridor_id, t.origin_point_id, t.destination_point_id,
+            COALESCE(u.preferred_name, u.full_name) AS driver_name,
+            u.reliability_score AS driver_reliability,
+            COALESCE((SELECT ROUND(AVG(stars),1) FROM ratings WHERE ratee_id = t.driver_id), 5.0) AS driver_rating,
+            v.make AS vehicle_make, v.model AS vehicle_model, v.colour AS vehicle_colour, v.plate_number
+     FROM trips t
+     JOIN users u ON t.driver_id = u.id
+     JOIN vehicles v ON t.vehicle_id = v.id
+     WHERE t.id = $1`,
+    [req.params.id]
+  )).rows[0];
+
+  if (!trip) return res.status(404).json({ success: false, error: 'Trip not found' });
+
+  if (pickup_point_id && dropoff_point_id) {
+    trip.pickup_point_name = (await query('SELECT name FROM pickup_points WHERE id=$1', [pickup_point_id])).rows[0]?.name || null;
+    trip.per_seat_price = await pricingEngine.calculatePrice({
+      corridorId: trip.corridor_id,
+      pickupPointId: pickup_point_id,
+      dropoffPointId: dropoff_point_id,
+      confirmedSeats: trip.total_seats - trip.available_seats,
+    });
+  }
+
+  res.json({ success: true, trip });
+}));
 
 // POST /api/trips — driver publishes a trip
 router.post(

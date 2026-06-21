@@ -11,13 +11,18 @@ async function findEligibleTrips({ corridorId, direction, pickupPointId, dropoff
   const result = await query(
     `SELECT t.*, pp_origin.order_index AS origin_idx, pp_dest.order_index AS dest_idx,
             pp_pickup.order_index AS pickup_idx, pp_drop.order_index AS drop_idx,
-            u.reliability_score AS driver_reliability
+            pp_pickup.name AS pickup_point_name,
+            u.reliability_score AS driver_reliability,
+            COALESCE(u.preferred_name, u.full_name) AS driver_name,
+            COALESCE((SELECT ROUND(AVG(stars),1) FROM ratings WHERE ratee_id = t.driver_id), 5.0) AS driver_rating,
+            v.make AS vehicle_make, v.model AS vehicle_model, v.colour AS vehicle_colour, v.plate_number
      FROM trips t
      JOIN pickup_points pp_origin ON t.origin_point_id = pp_origin.id
      JOIN pickup_points pp_dest   ON t.destination_point_id = pp_dest.id
      JOIN pickup_points pp_pickup ON pp_pickup.id = $3
      JOIN pickup_points pp_drop   ON pp_drop.id   = $4
      JOIN users u ON t.driver_id = u.id
+     JOIN vehicles v ON t.vehicle_id = v.id
      WHERE t.corridor_id = $1
        AND t.direction = $2
        AND t.status = 'PUBLISHED'
