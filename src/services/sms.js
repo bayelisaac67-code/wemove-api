@@ -11,8 +11,8 @@
  * Failure-isolated: a send error never breaks the OTP flow — the code is
  * already persisted in the DB and still logged here as a fallback.
  *
- * Auth: Sendexa uses `Authorization: Basic <token>`, where <token> is the
- * pre-computed value copied from the Sendexa dashboard (set as SENDEXA_API_KEY).
+ * Auth: Sendexa uses `Authorization: Bearer <token>`, where <token> is the
+ * API key copied from the Sendexa dashboard (set as SENDEXA_API_KEY).
  */
 const SENDEXA_API_KEY = process.env.SENDEXA_API_KEY;
 const SENDEXA_SENDER_ID = process.env.SENDEXA_SENDER_ID || 'WeMove';
@@ -34,7 +34,7 @@ async function sendOtpSms(phone, code) {
     const res = await fetch(SENDEXA_SMS_URL, {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${SENDEXA_API_KEY}`,
+        Authorization: `Bearer ${SENDEXA_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
