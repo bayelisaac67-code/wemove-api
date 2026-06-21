@@ -13,9 +13,11 @@ router.post(
   authenticate,
   requireVerified,
   [
-    body('trip_id').isUUID(),
-    body('pickup_point_id').isUUID(),
-    body('dropoff_point_id').isUUID(),
+    // UUID-shape check (not strict isUUID): the seed corridor/pickup-point IDs
+    // use a non-spec version nibble; DB foreign keys enforce real referential integrity.
+    body('trip_id').matches(/^[0-9a-fA-F-]{36}$/),
+    body('pickup_point_id').matches(/^[0-9a-fA-F-]{36}$/),
+    body('dropoff_point_id').matches(/^[0-9a-fA-F-]{36}$/),
     body('seats').isInt({ min: 1, max: 4 }),
     body('payment_method').isIn(['CASH', 'MOMO', 'GHANAPAY']),
   ],
