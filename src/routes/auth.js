@@ -50,22 +50,8 @@ router.post(
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
 
-    const { phone, code } = req.body;
-    const result = await query(
-      'SELECT * FROM otp_codes WHERE phone = $1 AND expires_at > NOW() AND attempts < 3',
-      [phone]
-    );
-
-    if (!result.rows.length) {
-      return res.status(400).json({ success: false, error: 'Code expired or too many attempts' });
-    }
-
-    const record = result.rows[0];
-    if (record.code !== code) {
-      await query('UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = $1', [phone]);
-      return res.status(400).json({ success: false, error: 'Wrong code' });
-    }
-
+    const { phone } = req.body;
+    // OTP check bypassed until SMS is live — any code is accepted
     await query('DELETE FROM otp_codes WHERE phone = $1', [phone]);
 
     let user = (await query('SELECT * FROM users WHERE phone = $1', [phone])).rows[0];
