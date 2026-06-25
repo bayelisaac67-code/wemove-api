@@ -26,6 +26,11 @@ router.get(
       passengerId: req.user.id,
     });
 
+    // Segment is the same for every matched trip (same pickup/dropoff), so the
+    // distance + carbon saved are computed once and shared across results.
+    const segmentKm = await pricingEngine.getSegmentKm(pickup_point_id, dropoff_point_id);
+    const co2SavedKg = pricingEngine.co2SavedKg(segmentKm);
+
     // Enrich each result with the per-seat price for THIS passenger's segment
     // and reshape to exactly the fields the mobile trips-list renders.
     const trips = await Promise.all(
@@ -42,6 +47,8 @@ router.get(
         available_seats: t.available_seats,
         pickup_point_name: t.pickup_point_name,
         walk_minutes: 3,
+        segment_km: segmentKm,
+        co2_saved_kg: co2SavedKg,
         per_seat_price: await pricingEngine.calculatePrice({
           corridorId: t.corridor_id,
           pickupPointId: pickup_point_id,
@@ -51,7 +58,7 @@ router.get(
       }))
     );
 
-    res.json({ success: true, trips });
+    res.json({ success: true, trips, segment_km: segmentKm, co2_saved_kg: co2SavedKg });
   })
 );
 
@@ -83,6 +90,12 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
       dropoffPointId: dropoff_point_id,
       confirmedSeats: trip.total_seats - trip.available_seats,
     });
+    // Honest-fork data (PCD §4): distance, carbon saved vs solo, and the Solo
+    // alternative's price band — so the app can show Shared visibly winning.
+    const segmentKm = await pricingEngine.getSegmentKm(pickup_point_id, dropoff_point_id);
+    trip.segment_km = segmentKm;
+    trip.co2_saved_kg = pricingEngine.co2SavedKg(segmentKm);
+    trip.solo_estimate = pricingEngine.getSoloEstimate(segmentKm);
   }
 
   res.json({ success: true, trip });

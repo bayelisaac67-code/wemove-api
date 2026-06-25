@@ -89,6 +89,13 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   )).rows[0];
 
   if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+
+  // Carbon saved on this booking (PCD §4) — shown as the congestion-mission
+  // moment on the Confirmed screen.
+  const segmentKm = await pricingEngine.getSegmentKm(booking.pickup_point_id, booking.dropoff_point_id);
+  booking.segment_km = segmentKm;
+  booking.co2_saved_kg = pricingEngine.co2SavedKg(segmentKm) * (booking.seats || 1);
+
   res.json({ success: true, booking });
 }));
 
